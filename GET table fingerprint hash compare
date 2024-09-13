@@ -1,0 +1,89 @@
+DECLARE			@database		sysname			= 'master'
+				,@compute_fingerprint bit		= 1
+
+				,@sql			nvarchar(max)
+				,@ParmDefinition nvarchar(500)
+				
+				,@countOUT		bigint
+				,@checksum_column_firstOUT	bigint
+				,@checksum_column_allOUT	bigint
+
+
+				,@schema		sysname
+				,@table			sysname
+				,@column		sysname
+
+				,@e				varchar(1000)
+				,@i				int = 1
+
+
+DECLARE			@result TABLE (
+				 [schema]			sysname
+				,[table]			sysname
+				,[column]			sysname
+				,[count]			bigint
+				,[checksum_column_first] bigint
+				,[checksum_column_all] bigint
+)
+
+
+
+
+
+SET @sql = N'SELECT s.[name],t.[name],c.[name] FROM [' + @database + '].sys.tables t INNER JOIN [' + @database + '].sys.schemas s ON t.[schema_id] = s.[schema_id] INNER JOIN [' + @database + '].sys.columns c ON t.[object_id] = c.[object_id]
+	AND c.[column_id] = 1 ORDER BY s.[name] ASC, t.[name]'
+
+INSERT INTO @result ([schema],[table],[column])
+EXEC sp_executesql @sql
+
+PRINT CAST(@@ROWCOUNT AS varchar) + ' table(s) found in database [' + @database + ']. Please be patient...'
+PRINT 'Computing fingerprint for'
+
+
+DECLARE			result_cursor CURSOR LOCAL FAST_FORWARD READ_ONLY FOR SELECT [schema],[table],[column] FROM @result
+OPEN result_cursor
+
+WHILE (1=1)
+BEGIN
+	
+	FETCH NEXT FROM result_cursor INTO @schema,@table,@column
+	IF (@@FETCH_STATUS <> 0) BREAK
+
+
+	SET @e = CONCAT_WS(' ', @i, @schema, @table, '...')
+	RAISERROR(@e, 0, 1) WITH NOWAIT
+
+	SET @sql = N'
+SELECT	@coutOUT = COUNT(*)'
+
+IF (@compute_fingerprint = 1)
+	SET @sql += N'
+		,@checksum_column_firstOUT = CHECKSUM_AGG(BINARY_CHECKSUM([' + @column + ']))
+		,@checksum_column_allOUT = CHECKSUM_AGG(BINARY_CHECKSUM(*))'
+
+SET @sql += N'
+FROM	[' + @database + '].[' + @schema + '].[' + @table + ']'
+	SET @ParmDefinition = N'@coutOUT bigint OUTPUT, @checksum_column_firstOUT bigint OUTPUT, @checksum_column_allOUT bigint OUTPUT';
+
+
+
+	EXEC sp_executesql @sql, @ParmDefinition, @coutOUT=@countOUT OUTPUT, @checksum_column_firstOUT=@checksum_column_firstOUT OUTPUT, @checksum_column_allOUT=@checksum_column_allOUT OUTPUT;
+
+
+
+	UPDATE @result SET [count] = @countOUT, [checksum_column_first] = @checksum_column_firstOUT, [checksum_column_all] = @checksum_column_allOUT WHERE [schema] = @schema AND [table] = @table
+
+	SET @i = @i + 1
+END
+
+INSERT INTO @result ([schema],[table],[column],[count],[checksum_column_first],[checksum_column_all])
+SELECT 'Total','Total','Total',SUM([count]),CHECKSUM_AGG(BINARY_CHECKSUM([checksum_column_first])),CHECKSUM_AGG(BINARY_CHECKSUM([checksum_column_all])) FROM @result
+
+
+CLOSE result_cursor;
+DEALLOCATE result_cursor;
+
+PRINT ''
+PRINT 'Complete! Totals are at the end of the result set'
+
+SELECT * FROM @result
