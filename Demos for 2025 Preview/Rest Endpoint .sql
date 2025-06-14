@@ -20,5 +20,5 @@ EXEC sp_invoke_external_rest_endpoint
 
 DECLARE @embeddingJson NVARCHAR(MAX);
 print @result
-
---SELECT @embeddingJson = JSON_VALUE(@result, '$.response');
+ 
+--SELECT @embeddingJson = JSON_VALUE(@result, '$.response' );
