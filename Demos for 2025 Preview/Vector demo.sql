@@ -10,4 +10,4 @@ INSERT INTO dbo.TextEmbeddings (Embedding)
 VALUES (@vec);
 
 INSERT INTO dbo.TextEmbeddings (Embedding)
-VALUES ( CAST(@vec AS VECTOR(3) ))
+VALUES ( CAST(@vec AS VECTOR(3)))
